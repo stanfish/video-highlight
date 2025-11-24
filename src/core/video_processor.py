@@ -34,20 +34,23 @@ class VideoProcessor:
             return None
 
     def create_title_clip(self, text: str, width: int, height: int, duration: float = 5.0) -> VideoFileClip:
-        """Creates a transparent title clip using PIL."""
+        """Creates a cinematic title clip using PIL with animation."""
         # Create transparent image
         img = Image.new('RGBA', (width, height), (0, 0, 0, 0))
         draw = ImageDraw.Draw(img)
         
-        # Load font (default to Arial or similar if available, else default)
+        # Load font - try to find a bold one
+        font_size = 120
         try:
-            # Try to load a nice font
-            font = ImageFont.truetype("arial.ttf", 80)
+            # Try typical Windows fonts
+            font = ImageFont.truetype("arialbd.ttf", font_size) # Arial Bold
         except IOError:
-            font = ImageFont.load_default()
+            try:
+                font = ImageFont.truetype("arial.ttf", font_size)
+            except IOError:
+                font = ImageFont.load_default()
             
         # Calculate text position (center)
-        # Get text bounding box
         left, top, right, bottom = draw.textbbox((0, 0), text, font=font)
         text_width = right - left
         text_height = bottom - top
@@ -55,16 +58,28 @@ class VideoProcessor:
         x = (width - text_width) // 2
         y = (height - text_height) // 2
         
-        # Draw text with shadow for better visibility
-        shadow_offset = 3
-        draw.text((x + shadow_offset, y + shadow_offset), text, font=font, fill=(0, 0, 0, 128))
-        draw.text((x, y), text, font=font, fill=(255, 255, 255, 255))
+        # Draw text with thick outline (stroke)
+        stroke_width = 6
+        stroke_color = (0, 0, 0, 255) # Black
+        text_color = (255, 215, 0, 255) # Gold
+        
+        # Draw outline
+        for adj_x in range(-stroke_width, stroke_width + 1):
+            for adj_y in range(-stroke_width, stroke_width + 1):
+                draw.text((x + adj_x, y + adj_y), text, font=font, fill=stroke_color)
+                
+        # Draw main text
+        draw.text((x, y), text, font=font, fill=text_color)
         
         # Convert to numpy array for MoviePy
         img_np = np.array(img)
         
         # Create ImageClip
         txt_clip = ImageClip(img_np, duration=duration)
+        
+        # Add animations: Fade in and Fade out
+        txt_clip = txt_clip.crossfadein(1.0).crossfadeout(1.0)
+        
         return txt_clip
 
     def assemble_video(self, clips: List[VideoFileClip], audio_path: str, output_path: str, transition_duration: float = 0.5, output_width: int = 1920, title_text: str = None):
@@ -139,18 +154,21 @@ class VideoProcessor:
             final_video = final_video.set_audio(audio)
             
         print(f"Writing output to {output_path}... (Resolution: {output_width}x{int(output_width * 9 / 16)})")
-        # Use settings compatible with Windows Media Player and most players
+        
+        # Configure encoding parameters (CPU - High Compatibility)
+        print("Using CPU encoding (libx264)...")
         final_video.write_videofile(
-            output_path, 
-            fps=24, 
+            output_path,
+            fps=24,
             codec='libx264',
             audio_codec='aac',
-            preset='medium',  # Good balance of speed/quality
+            preset='medium',
             ffmpeg_params=[
                 '-profile:v', 'main',  # Use main profile for better compatibility
                 '-level', '4.0',  # H.264 level 4.0 (supports 1080p)
                 '-pix_fmt', 'yuv420p',  # Standard pixel format for compatibility
                 '-crf', '23',  # Constant Rate Factor (18-28, lower = better quality)
-            ]
+            ],
+            threads=os.cpu_count() or 4
         )
         print("Done!")
