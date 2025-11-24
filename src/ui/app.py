@@ -1,0 +1,157 @@
+import streamlit as st
+import os
+import glob
+from pathlib import Path
+import sys
+
+# Add project root to path so we can import src modules
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
+
+# from src.main import process_video_generation  <-- Removed unused import
+
+st.set_page_config(page_title="AI Video Highlight Generator", page_icon="🎬", layout="wide")
+
+st.title("🎬 AI Video Highlight Generator")
+st.markdown("Turn your raw footage into a cinematic highlight reel automatically.")
+
+# --- Sidebar / Configuration ---
+st.sidebar.header("Configuration")
+
+# 1. Input Folder
+st.sidebar.subheader("1. Media Source")
+input_folder = st.sidebar.text_input("Input Folder Path", placeholder=r"C:\path\to\your\videos")
+
+# 2. Music Selection
+st.sidebar.subheader("2. Background Music")
+music_folder = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "bg_music")
+os.makedirs(music_folder, exist_ok=True)
+
+music_files = glob.glob(os.path.join(music_folder, "*.mp3"))
+music_options = {os.path.basename(f): f for f in music_files}
+
+selected_music_name = st.sidebar.selectbox(
+    "Select Music Track", 
+    options=list(music_options.keys()) if music_files else ["No music found"],
+    index=0 if music_files else 0
+)
+
+if not music_files:
+    st.sidebar.warning(f"No .mp3 files found in {music_folder}. Please add some music!")
+    selected_music_path = None
+else:
+    selected_music_path = music_options[selected_music_name]
+    st.sidebar.audio(selected_music_path)
+
+# 3. Title Overlay
+st.sidebar.subheader("3. Video Title (Optional)")
+video_title = st.sidebar.text_input("Title Text", placeholder="My Awesome Trip 2025")
+
+# 4. Output Settings
+st.sidebar.subheader("4. Output")
+output_filename = st.sidebar.text_input("Output Filename", value="highlight_video.mp4")
+
+
+# --- Main Area ---
+
+if st.sidebar.button("Generate Highlight Video", type="primary"):
+    if not input_folder or not os.path.exists(input_folder):
+        st.error("Please enter a valid input folder path.")
+    elif not selected_music_path:
+        st.error("Please select a background music track.")
+    else:
+        # Create a placeholder for logs/progress
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+        
+        try:
+            status_text.info("Starting generation process... This may take a few minutes.")
+            
+            # Calculate project root securely
+            current_file = os.path.abspath(__file__)
+            project_root = os.path.dirname(os.path.dirname(os.path.dirname(current_file)))
+            
+            # Define output path
+            output_path = os.path.join(project_root, output_filename)
+            
+            # Clean inputs
+            clean_input_folder = input_folder.strip().strip('"').strip("'")
+            
+            # Call the main processing function
+            with st.spinner("Analyzing media, scoring clips, and rendering video..."):
+                import subprocess
+                
+                # Construct command
+                cmd = [
+                    sys.executable, "-m", "src.main",
+                    "--input", clean_input_folder,
+                    "--audio", selected_music_path,
+                    "--output", output_path
+                ]
+                
+                if video_title:
+                    cmd.extend(["--title", video_title])
+                
+                # Run as subprocess
+                process = subprocess.Popen(
+                    cmd, 
+                    stdout=subprocess.PIPE, 
+                    stderr=subprocess.STDOUT, 
+                    text=True, 
+                    cwd=project_root
+                )
+                
+                # Stream output to UI
+                log_container = st.expander("Process Logs", expanded=True)
+                with log_container:
+                    # Use iter(process.stdout.readline, '') to read line by line
+                    for line in iter(process.stdout.readline, ''):
+                        line = line.strip()
+                        if not line: continue
+                        
+                        st.text(line)
+                        
+                        # Parse progress
+                        if "PROGRESS_UPDATE:" in line:
+                            try:
+                                pct = int(line.split(":")[-1])
+                                progress_bar.progress(pct)
+                                status_text.text(f"Processing media... {pct}%")
+                            except:
+                                pass
+                        
+                        # Parse MoviePy progress (rendering)
+                        # MoviePy output format: "t:  41%|..."
+                        if "t:" in line and "%" in line:
+                            try:
+                                # Extract percentage
+                                import re
+                                match = re.search(r"(\d+)%", line)
+                                if match:
+                                    render_pct = int(match.group(1))
+                                    # Map 0-100 rendering to 80-100 overall
+                                    overall_pct = 80 + int(render_pct * 0.2)
+                                    progress_bar.progress(overall_pct)
+                                    status_text.text(f"Rendering video... {render_pct}%")
+                            except:
+                                pass
+                
+                process.wait()
+                
+                if process.returncode == 0:
+                    st.success("Video generated successfully!")
+                    st.video(output_path)
+                    st.balloons()
+                else:
+                    st.error("An error occurred during generation. Check logs above.")
+                    
+        except Exception as e:
+            st.error(f"An unexpected error occurred: {e}")
+
+st.markdown("---")
+st.markdown("### Instructions")
+st.markdown("""
+1.  **Paste the folder path** containing your videos and photos.
+2.  **Select a music track** from the dropdown (add .mp3 files to the `bg_music` folder in the project root).
+3.  (Optional) **Enter a title** for your video.
+4.  Click **Generate Highlight Video**.
+""")
