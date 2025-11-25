@@ -2,7 +2,7 @@ from moviepy.editor import VideoFileClip, concatenate_videoclips, AudioFileClip,
 import random
 from typing import List
 import os
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ExifTags
 import numpy as np
 
 class VideoProcessor:
@@ -16,7 +16,34 @@ class VideoProcessor:
             ext = os.path.splitext(media_path)[1].lower()
             if ext in ['.jpg', '.jpeg', '.png']:
                 # It's an image
-                clip = ImageClip(media_path, duration=duration)
+                # Load with PIL to handle rotation
+                pil_img = Image.open(media_path)
+                
+                # Handle EXIF Rotation
+                try:
+                    for orientation in ExifTags.TAGS.keys():
+                        if ExifTags.TAGS[orientation] == 'Orientation':
+                            break
+                    
+                    exif = pil_img._getexif()
+                    if exif is not None:
+                        exif = dict(exif.items())
+                        orientation = exif.get(orientation)
+                        
+                        if orientation == 3:
+                            pil_img = pil_img.rotate(180, expand=True)
+                        elif orientation == 6:
+                            pil_img = pil_img.rotate(270, expand=True)
+                        elif orientation == 8:
+                            pil_img = pil_img.rotate(90, expand=True)
+                except (AttributeError, KeyError, IndexError):
+                    # No EXIF or other error, ignore
+                    pass
+                
+                # Convert back to numpy for MoviePy
+                img_np = np.array(pil_img)
+                clip = ImageClip(img_np, duration=duration)
+                
                 # Optional: Add a slow zoom or pan effect (Ken Burns) for polish?
                 # For now, static image is fine.
                 return clip
@@ -108,18 +135,12 @@ class VideoProcessor:
             
             if clip_ratio > target_ratio:
                 # Clip is wider than target (fit to width)
-                # Ensure width is even
-                new_width = target_width
-                new_height = int(target_width / clip_ratio)
-                if new_height % 2 != 0: new_height -= 1
-                resized_content = clip.resize(width=new_width, height=new_height)
+                # Resize by width only to preserve aspect ratio
+                resized_content = clip.resize(width=target_width)
             else:
                 # Clip is taller than target (fit to height)
-                # Ensure height is even
-                new_height = target_height
-                new_width = int(target_height * clip_ratio)
-                if new_width % 2 != 0: new_width -= 1
-                resized_content = clip.resize(width=new_width, height=new_height)
+                # Resize by height only to preserve aspect ratio
+                resized_content = clip.resize(height=target_height)
             
             # Composite onto black background
             # Note: CompositeVideoClip default background is transparent (black in mp4)
