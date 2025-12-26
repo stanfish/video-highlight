@@ -53,7 +53,7 @@ This is the easiest way to use the tool.
 1.  **Run the App**:
     Open your terminal in the project folder and run:
     ```bash
-    streamlit run src/ui/app.py
+    python -m streamlit run src/ui/app.py
     ```
     This will open the interface in your web browser.
 
