@@ -2,12 +2,52 @@ from moviepy.editor import VideoFileClip, concatenate_videoclips, AudioFileClip,
 import random
 from typing import List
 import os
+import subprocess
+import json
 from PIL import Image, ImageDraw, ImageFont, ExifTags
 import numpy as np
 
 class VideoProcessor:
     def __init__(self):
         self.clips = []
+
+    def get_video_rotation(self, media_path: str) -> int:
+        """
+        Robustly detects video rotation using ffprobe, checking both tags and side_data.
+        Returns the rotation in degrees (e.g. 90, -90, 180, 270) or 0 if none.
+        """
+        try:
+            cmd = [
+                "ffprobe", 
+                "-v", "quiet", 
+                "-print_format", "json", 
+                "-show_streams", 
+                media_path
+            ]
+            
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            if result.returncode != 0:
+                return 0
+                
+            data = json.loads(result.stdout)
+            
+            for stream in data.get('streams', []):
+                if stream.get('codec_type') == 'video':
+                    # Check tags
+                    tags = stream.get('tags', {})
+                    if 'rotate' in tags:
+                        return int(float(tags['rotate']))
+                        
+                    # Check side_data_list
+                    side_data = stream.get('side_data_list', [])
+                    for side in side_data:
+                        if 'rotation' in side:
+                            return int(float(side['rotation']))
+            
+            return 0
+        except Exception as e:
+            print(f"Error checking rotation for {media_path}: {e}")
+            return 0
         
     def create_clip(self, media_path: str, start_time: float, duration: float) -> VideoFileClip:
         """Creates a subclip from a video file or an image clip."""
@@ -50,6 +90,19 @@ class VideoProcessor:
             else:
                 # It's a video
                 clip = VideoFileClip(media_path)
+                
+                # Aspect Ratio Correction based on Rotation Metadata
+                # The user requested: "I do not want to change the rotation, I just want to fix it by adding black spacing"
+                # This implies the video is visually stretched (fat) and needs to be squashed horizontally.
+                rotation = self.get_video_rotation(media_path)
+                if rotation in [90, -90, 270, -270]:
+                    print(f"Detected vertical metadata ({rotation}). Applying squeeze correction instead of rotation.")
+                    # Calculate new dimensions: Keep Height, Decrease Width
+                    # Target Aspect Ratio: 9:16 approx (0.5625)
+                    # Current Height likely 1080. New Width should be ~607.
+                    new_width = int(clip.h * (9/16)) 
+                    clip = clip.resize(newsize=(new_width, clip.h))
+
                 # Ensure start_time is valid
                 if start_time + duration > clip.duration:
                     start_time = max(0, clip.duration - duration)

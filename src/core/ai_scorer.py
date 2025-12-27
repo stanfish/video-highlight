@@ -1,3 +1,4 @@
+import os
 import torch
 from PIL import Image
 from transformers import CLIPProcessor, CLIPModel
@@ -8,9 +9,18 @@ from typing import List, Tuple
 class VideoScorer:
     def __init__(self, model_name="openai/clip-vit-base-patch32"):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        print(f"Loading AI Model ({model_name}) on {self.device}...")
-        self.model = CLIPModel.from_pretrained(model_name).to(self.device)
-        self.processor = CLIPProcessor.from_pretrained(model_name)
+        
+        # Check for local model
+        local_path = os.path.join("models", model_name)
+        if os.path.exists(local_path):
+            print(f"Loading local AI Model from {local_path} on {self.device}...")
+            load_path = local_path
+        else:
+            print(f"Loading AI Model ({model_name}) from Hub on {self.device}...")
+            load_path = model_name
+
+        self.model = CLIPModel.from_pretrained(load_path).to(self.device)
+        self.processor = CLIPProcessor.from_pretrained(load_path)
         print("Model loaded.")
 
     def score_frame(self, frame: np.ndarray, text_prompts: List[str]) -> float:

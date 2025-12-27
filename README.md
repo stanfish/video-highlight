@@ -44,6 +44,17 @@ A local Windows application that automatically generates cinematic highlight vid
     > ```
     > (Check [pytorch.org](https://pytorch.org/get-started/locally/) for the command matching your CUDA version).
 
+## Offline Usage
+
+To avoid downloading the AI model every time or to work without an internet connection:
+
+1.  Run the download script once:
+    ```bash
+    python download_models.py
+    ```
+2.  This will save the model (approx 600MB) to the `models/` directory.
+3.  The application will automatically detect and use the local model.
+
 ## Usage
 
 ### Option 1: User Interface (Recommended)

@@ -19,7 +19,22 @@ st.sidebar.header("Configuration")
 
 # 1. Input Folder
 st.sidebar.subheader("1. Media Source")
-input_folder = st.sidebar.text_input("Input Folder Path", placeholder=r"C:\path\to\your\videos")
+
+# Use session state to track and clean the input
+if 'input_folder_raw' not in st.session_state:
+    st.session_state.input_folder_raw = ""
+
+input_folder_raw = st.sidebar.text_input("Input Folder Path", 
+                                          value=st.session_state.input_folder_raw,
+                                          placeholder=r"C:\path\to\your\videos")
+
+# Auto-clean quotes from the input
+input_folder = input_folder_raw.strip().strip('"').strip("'")
+
+# Update session state with cleaned value for next render
+if input_folder != st.session_state.input_folder_raw:
+    st.session_state.input_folder_raw = input_folder
+    st.rerun()
 
 # 2. Music Selection
 st.sidebar.subheader("2. Background Music")
@@ -48,7 +63,98 @@ video_title = st.sidebar.text_input("Title Text", placeholder="My Awesome Trip 2
 
 # 4. Output Settings
 st.sidebar.subheader("4. Output")
-output_filename = st.sidebar.text_input("Output Filename", value="highlight_video.mp4")
+# Auto-generate filename from video title
+if video_title:
+    # Replace spaces with underscores and sanitize
+    sanitized_title = video_title.replace(" ", "_").replace("-", "_")
+    default_filename = f"highlight_{sanitized_title}.mp4"
+else:
+    default_filename = "highlight_video.mp4"
+    
+output_filename = st.sidebar.text_input("Output Filename", value=default_filename)
+
+st.sidebar.markdown("---")
+# Scroll to Bottom Button using CSS/JS Injection
+# We use a Streamlit component to run Javascript, and custom CSS to position the iframe.
+import streamlit.components.v1 as components
+
+# HTML/JS for the button
+# Robust Scroll to Bottom Button (Injects into parent DOM)
+import streamlit.components.v1 as components
+
+# JavaScript to create a fixed button in the main window (breaking out of iframe)
+js_code = """
+<script>
+    (function() {
+        // ID to prevent duplicate buttons
+        var btnId = "floating-scroll-btn-fixed";
+        
+        // Remove existing button if present (cleanup)
+        var existing = window.parent.document.getElementById(btnId);
+        if (existing) {
+            existing.remove();
+        }
+        
+        // Create Button
+        var btn = window.parent.document.createElement("button");
+        btn.id = btnId;
+        btn.innerText = "⬇️ Scroll to Bottom";
+        
+        // Style Button
+        btn.style.position = "fixed";
+        btn.style.bottom = "20px";
+        btn.style.right = "20px";
+        btn.style.zIndex = "999999";
+        btn.style.backgroundColor = "#FF4B4B";
+        btn.style.color = "white";
+        btn.style.border = "none";
+        btn.style.borderRadius = "50px";
+        btn.style.padding = "10px 20px";
+        btn.style.fontWeight = "bold";
+        btn.style.cursor = "pointer";
+        btn.style.boxShadow = "0px 4px 6px rgba(0,0,0,0.1)";
+        btn.style.transition = "background-color 0.3s";
+        
+        // Hover effect
+        btn.onmouseover = function() {
+            btn.style.backgroundColor = "#FF2B2B";
+        };
+        btn.onmouseout = function() {
+            btn.style.backgroundColor = "#FF4B4B";
+        };
+        
+        // Click Action
+        btn.onclick = function() {
+            // Priority 1: The active target during generation (inside the loop)
+            var target = window.parent.document.getElementById('active-scroll-target');
+            
+            // Priority 2: The static target at the bottom of the page (idle state)
+            if (!target) {
+                target = window.parent.document.getElementById('bottom-of-page');
+            }
+            
+            if (target) {
+                target.scrollIntoView({behavior: 'smooth', block: 'end'});
+            } else {
+                // Fallback: Aggressive scroll if anchors missing
+                var scrollTargets = [
+                    window.parent.document.querySelector('[data-testid="stAppViewContainer"]'),
+                    window.parent.document.querySelector('section.main')
+                ];
+                scrollTargets.forEach(function(el) {
+                    if (el) try { el.scrollTo({top: el.scrollHeight, behavior: 'smooth'}); } catch(e){}
+                });
+            }
+        };
+        
+        // Append to Parent Body
+        window.parent.document.body.appendChild(btn);
+    })();
+</script>
+"""
+
+# Inject the script
+components.html(js_code, height=0, width=0)
 
 
 # --- Main Area ---
@@ -102,6 +208,10 @@ if st.sidebar.button("Generate Highlight Video", type="primary"):
                 
                 # Stream output to UI
                 log_container = st.expander("Process Logs", expanded=True)
+                
+                # Render a scroll target HERE so it exists while the loop below is running
+                st.markdown("<div id='active-scroll-target'></div>", unsafe_allow_html=True)
+                
                 with log_container:
                     # Use iter(process.stdout.readline, '') to read line by line
                     for line in iter(process.stdout.readline, ''):
@@ -155,3 +265,8 @@ st.markdown("""
 3.  (Optional) **Enter a title** for your video.
 4.  Click **Generate Highlight Video**.
 """)
+
+# Anchor for robust scrolling
+st.markdown("<div id='bottom-of-page'></div>", unsafe_allow_html=True)
+
+

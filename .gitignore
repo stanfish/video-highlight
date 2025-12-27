@@ -1,28 +1,33 @@
-# Ignore input and output directories
-/input/
-/temp output/
-
-# Common system files
-.DS_Store
-Thumbs.db
-
-# Python specific
 __pycache__/
 *.py[cod]
 *$py.class
-
-# Virtual Environment
-venv/
+*.so
+.Python
 env/
-.venv/
-
-# IDE specific files
-.idea/
-.vscode/
-*.swp
-*.swo
-
-# Logs and databases
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+.pytest_cache/
+.coverage
+htmlcov/
+debug_clips/
+# Local models
+models/
+input/
+venv/
+temp output/
+*TEMP_MPY_*
+*.mp4
 *.log
-*.sql
-*.sqlite
