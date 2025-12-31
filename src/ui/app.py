@@ -42,7 +42,39 @@ music_folder = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__fi
 os.makedirs(music_folder, exist_ok=True)
 
 music_files = glob.glob(os.path.join(music_folder, "*.mp3"))
-music_options = {os.path.basename(f): f for f in music_files}
+
+# Get duration for each music file and create formatted options
+from moviepy.editor import AudioFileClip
+
+def get_audio_duration(file_path):
+    """Get duration of audio file in seconds"""
+    try:
+        audio = AudioFileClip(file_path)
+        duration = audio.duration
+        audio.close()
+        return duration
+    except:
+        return 0
+
+def format_duration(seconds):
+    """Format seconds as MM:SS"""
+    minutes = int(seconds // 60)
+    secs = int(seconds % 60)
+    return f"{minutes}:{secs:02d}"
+
+# Create list of (display_name, file_path, duration) tuples
+music_data = []
+for f in music_files:
+    duration = get_audio_duration(f)
+    basename = os.path.basename(f)
+    display_name = f"{format_duration(duration)} - {basename}"
+    music_data.append((display_name, f, duration))
+
+# Sort by duration (longest first)
+music_data.sort(key=lambda x: x[2], reverse=True)
+
+# Create options dict with display names
+music_options = {item[0]: item[1] for item in music_data}
 
 selected_music_name = st.sidebar.selectbox(
     "Select Music Track", 
