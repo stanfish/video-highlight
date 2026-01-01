@@ -9,3 +9,5 @@ streamlit
 ftfy
 regex
 tqdm
+psutil
+opencv-python

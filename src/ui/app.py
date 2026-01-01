@@ -7,7 +7,14 @@ import sys
 # Add project root to path so we can import src modules
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 
-# from src.main import process_video_generation  <-- Removed unused import
+# Import memory monitoring utilities
+from src.utils.memory_monitor import (
+    estimate_total_memory,
+    check_memory_safety,
+    calculate_optimal_batch_size,
+    format_memory_size
+)
+from src.utils.file_manager import get_media_files
 
 st.set_page_config(page_title="AI Video Highlight Generator", page_icon="🎬", layout="wide")
 
@@ -105,6 +112,32 @@ else:
     
 output_filename = st.sidebar.text_input("Output Filename", value=default_filename)
 
+# 5. Advanced Settings
+st.sidebar.markdown("---")
+with st.sidebar.expander("⚙️ Advanced Settings"):
+    st.markdown("**Memory Management**")
+    batch_size = st.number_input(
+        "Batch Size (0 = auto)",
+        min_value=0,
+        max_value=100,
+        value=0,
+        help="Process videos in batches to limit memory usage. 0 = auto-calculate based on available memory."
+    )
+    
+    max_frames = st.number_input(
+        "Max Frames per Video",
+        min_value=10,
+        max_value=500,
+        value=100,
+        help="Maximum frames to analyze per video for AI scoring. Lower values use less memory."
+    )
+    
+    skip_memory_check = st.checkbox(
+        "Skip memory check",
+        value=False,
+        help="Skip memory safety checks (not recommended)"
+    )
+
 st.sidebar.markdown("---")
 # Scroll to Bottom Button using CSS/JS Injection
 # We use a Streamlit component to run Javascript, and custom CSS to position the iframe.
@@ -197,6 +230,64 @@ if st.sidebar.button("Generate Highlight Video", type="primary"):
     elif not selected_music_path:
         st.error("Please select a background music track.")
     else:
+        # Memory check before processing
+        if not skip_memory_check:
+            st.info("🔍 Checking memory requirements...")
+            
+            try:
+                # Get media files
+                videos, images = get_media_files(input_folder)
+                all_media = videos + images
+                
+                if not all_media:
+                    st.error("No media files found in the input folder.")
+                    st.stop()
+                
+                st.write(f"Found {len(videos)} videos and {len(images)} images.")
+                
+                # Estimate memory
+                from moviepy.editor import AudioFileClip
+                audio = AudioFileClip(selected_music_path)
+                audio_duration = audio.duration
+                audio.close()
+                
+                num_media = len(all_media)
+                transition_duration = 0.5
+                target_total_duration = audio_duration + (num_media - 1) * transition_duration
+                target_clip_duration = target_total_duration / num_media if num_media > 0 else 5.0
+                
+                memory_estimate = estimate_total_memory(all_media, target_width=1920, 
+                                                        clip_duration=target_clip_duration)
+                
+                # Display memory info
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.metric("Estimated Memory", format_memory_size(memory_estimate['total_estimated']))
+                with col2:
+                    st.metric("Peak Memory", format_memory_size(memory_estimate['peak_memory']))
+                
+                # Check safety
+                is_safe, warning_level, message = check_memory_safety(memory_estimate['peak_memory'])
+                
+                if warning_level == 'danger':
+                    st.error(message)
+                    recommended_batch = calculate_optimal_batch_size(all_media, target_width=1920,
+                                                                    clip_duration=target_clip_duration)
+                    st.warning(f"⚠️ **Recommendation**: Enable batch processing with batch size {recommended_batch} to prevent crashes.")
+                    st.info("You can configure batch size in Advanced Settings above.")
+                    
+                    if batch_size == 0:
+                        st.error("❌ Cannot proceed without batch processing. Please set a batch size in Advanced Settings.")
+                        st.stop()
+                elif warning_level == 'warning':
+                    st.warning(message)
+                    st.info("💡 Consider closing other applications or enabling batch processing.")
+                else:
+                    st.success(message)
+                    
+            except Exception as e:
+                st.warning(f"Could not estimate memory requirements: {e}")
+                st.info("Proceeding anyway...")
         # Create a placeholder for logs/progress
         progress_bar = st.progress(0)
         status_text = st.empty()
@@ -228,6 +319,15 @@ if st.sidebar.button("Generate Highlight Video", type="primary"):
                 
                 if video_title:
                     cmd.extend(["--title", video_title])
+                
+                # Add batch size and max frames
+                if batch_size > 0:
+                    cmd.extend(["--batch-size", str(batch_size)])
+                
+                cmd.extend(["--max-frames", str(max_frames)])
+                
+                if skip_memory_check:
+                    cmd.append("--skip-memory-check")
                 
                 # Run as subprocess
                 process = subprocess.Popen(
