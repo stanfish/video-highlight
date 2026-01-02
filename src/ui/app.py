@@ -21,6 +21,16 @@ st.set_page_config(page_title="AI Video Highlight Generator", page_icon="🎬", 
 st.title("🎬 AI Video Highlight Generator")
 st.markdown("Turn your raw footage into a cinematic highlight reel automatically.")
 
+# Inject Custom CSS
+st.markdown("""
+    <style>
+    /* Change cursor to pointer for selectbox (dropdown) */
+    div[data-baseweb="select"] > div {
+        cursor: pointer !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
 # --- Sidebar / Configuration ---
 st.sidebar.header("Configuration")
 
@@ -120,7 +130,7 @@ with st.sidebar.expander("⚙️ Advanced Settings"):
         "Batch Size (0 = auto)",
         min_value=0,
         max_value=100,
-        value=0,
+        value=15,
         help="Process videos in batches to limit memory usage. 0 = auto-calculate based on available memory."
     )
     
@@ -223,6 +233,71 @@ components.html(js_code, height=0, width=0)
 
 
 # --- Main Area ---
+
+# Preview Information Panel
+st.markdown("---")
+st.subheader("📊 Preview Information")
+
+if input_folder and os.path.exists(input_folder) and selected_music_path:
+    try:
+        # Get media files
+        videos, images = get_media_files(input_folder)
+        all_media = videos + images
+        
+        if all_media:
+            # Get audio duration
+            from moviepy.editor import AudioFileClip
+            audio = AudioFileClip(selected_music_path)
+            audio_duration = audio.duration
+            audio.close()
+            
+            # Calculate clip durations
+            num_media = len(all_media)
+            transition_duration = 0.5
+            target_total_duration = audio_duration + (num_media - 1) * transition_duration
+            target_clip_duration = target_total_duration / num_media if num_media > 0 else 5.0
+            
+            # Display information in a nice format
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                st.metric(
+                    label="📹 Videos Found",
+                    value=len(videos),
+                    help="Number of video files (.mp4, .mov) in the input folder"
+                )
+            
+            with col2:
+                st.metric(
+                    label="🖼️ Photos Found",
+                    value=len(images),
+                    help="Number of image files (.jpg, .png) in the input folder"
+                )
+            
+            with col3:
+                st.metric(
+                    label="🎵 Music Duration",
+                    value=f"{int(audio_duration // 60)}:{int(audio_duration % 60):02d}",
+                    help="Duration of selected background music (MM:SS)"
+                )
+            
+            # Additional details
+            st.info(
+                f"**Output Preview:**\n\n"
+                f"• Total clips: **{num_media}** (videos + photos)\n\n"
+                f"• Each photo/video clip: **~{target_clip_duration:.1f} seconds**\n\n"
+                f"• Transition duration: **{transition_duration} seconds** (crossfade between clips)\n\n"
+                f"• Final video length: **{int(audio_duration // 60)}:{int(audio_duration % 60):02d}** (matches music duration)"
+            )
+        else:
+            st.warning("⚠️ No media files found in the selected folder. Please check the path.")
+    
+    except Exception as e:
+        st.warning(f"Could not load preview information: {e}")
+else:
+    st.info("👆 Please select an input folder and background music to see preview information.")
+
+st.markdown("---")
 
 if st.sidebar.button("Generate Highlight Video", type="primary"):
     if not input_folder or not os.path.exists(input_folder):
@@ -383,6 +458,23 @@ if st.sidebar.button("Generate Highlight Video", type="primary"):
                     st.success("Video generated successfully!")
                     st.video(output_path)
                     st.balloons()
+                    
+                    # Update scroll button text
+                    components.html("""
+                        <script>
+                            (function() {
+                                var btn = window.parent.document.getElementById("floating-scroll-btn-fixed");
+                                if (btn) {
+                                    btn.innerText = "⬇️ Scroll to Output Video";
+                                    btn.style.backgroundColor = "#28a745"; // Green color
+                                    
+                                    // Update hover colors
+                                    btn.onmouseover = function() { btn.style.backgroundColor = "#218838"; };
+                                    btn.onmouseout = function() { btn.style.backgroundColor = "#28a745"; };
+                                }
+                            })();
+                        </script>
+                    """, height=0, width=0)
                 else:
                     st.error("An error occurred during generation. Check logs above.")
                     

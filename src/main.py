@@ -233,8 +233,9 @@ def process_in_batches(all_media, audio_path, output_path, scorer, video_proc,
         final_video_proc = VideoProcessor()
         
         # Concatenate batches and add audio/title
+        # Apply transitions between batches for smooth continuity
         final_video_proc.assemble_video(final_clips, audio_path, output_path,
-                                       transition_duration=0,  # Batches already have transitions
+                                       transition_duration=transition_duration,
                                        output_width=1920, title_text=title_text)
         
         # Cleanup
